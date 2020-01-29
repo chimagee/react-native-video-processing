@@ -5,7 +5,6 @@
 
 import Foundation
 import AVFoundation
-import UIKit
 
 enum QUALITY_ENUM: String {
   case QUALITY_LOW = "low"
@@ -21,24 +20,21 @@ enum QUALITY_ENUM: String {
 
 @objc(RNVideoTrimmer)
 class RNVideoTrimmer: NSObject {
-  @objc class func requiresMainQueueSetup() -> Bool {
-    return true
-  }
 
   @objc func getVideoOrientationFromAsset(asset : AVAsset) -> UIImage.Orientation {
-    let videoTrack: AVAssetTrack? = asset.tracks(withMediaType: .video)[0]
+    let videoTrack: AVAssetTrack? = asset.tracks(withMediaType: AVMediaType.video)[0]
     let size = videoTrack!.naturalSize
 
     let txf: CGAffineTransform = videoTrack!.preferredTransform
 
     if (size.width == txf.tx && size.height == txf.ty) {
-      return .left;
+      return UIImage.Orientation.left;
     } else if (txf.tx == 0 && txf.ty == 0) {
-      return .right;
+      return UIImage.Orientation.right;
     } else if (txf.tx == 0 && txf.ty == size.width) {
-      return .down;
+      return UIImage.Orientation.down;
     } else {
-      return .up;
+      return UIImage.Orientation.up;
     }
   }
 
@@ -85,17 +81,17 @@ class RNVideoTrimmer: NSObject {
     }
 
     exportSession.outputURL = NSURL.fileURL(withPath: outputURL)
-    exportSession.outputFileType = .mp4
+    exportSession.outputFileType = AVFileType.mp4
     exportSession.shouldOptimizeForNetworkUse = true
 
     let videoComposition = AVMutableVideoComposition(propertiesOf: asset)
-    let clipVideoTrack: AVAssetTrack! = asset.tracks(withMediaType: .video)[0]
+    let clipVideoTrack: AVAssetTrack! = asset.tracks(withMediaType: AVMediaType.video)[0]
     let videoOrientation = self.getVideoOrientationFromAsset(asset: asset)
 
     let videoWidth : CGFloat
     let videoHeight : CGFloat
 
-    if ( videoOrientation == .up || videoOrientation == .down ) {
+    if ( videoOrientation == UIImage.Orientation.up || videoOrientation == UIImage.Orientation.down ) {
       videoWidth = clipVideoTrack.naturalSize.height
       videoHeight = clipVideoTrack.naturalSize.width
     } else {
@@ -122,7 +118,7 @@ class RNVideoTrimmer: NSObject {
     videoComposition.renderSize = CGSize(width: cropWidth, height: cropHeight)
 
     let instruction : AVMutableVideoCompositionInstruction = AVMutableVideoCompositionInstruction()
-    instruction.timeRange = CMTimeRange(start: .zero, end: asset.duration)
+    instruction.timeRange = CMTimeRange(start: CMTime.zero, end: asset.duration)
 
     var t1 = CGAffineTransform.identity
     var t2 = CGAffineTransform.identity
@@ -131,21 +127,21 @@ class RNVideoTrimmer: NSObject {
 
 
     switch videoOrientation {
-    case .up:
+    case UIImageOrientation.up:
       t1 = CGAffineTransform(translationX: clipVideoTrack.naturalSize.height - cropOffsetX, y: 0 - cropOffsetY );
-      t2 = t1.rotated(by: CGFloat.pi / 2 );
+      t2 = t1.rotated(by: CGFloat(M_PI_2) );
       break;
-    case .left:
+    case UIImageOrientation.left:
       t1 = CGAffineTransform(translationX: clipVideoTrack.naturalSize.width - cropOffsetX, y: clipVideoTrack.naturalSize.height - cropOffsetY );
-      t2 = t1.rotated(by: CGFloat.pi  );
+      t2 = t1.rotated(by: CGFloat(M_PI)  );
       break;
-    case .right:
+    case UIImageOrientation.right:
       t1 = CGAffineTransform(translationX: 0 - cropOffsetX, y: 0 - cropOffsetY );
       t2 = t1.rotated(by: 0);
       break;
-    case .down:
+    case UIImageOrientation.down:
       t1 = CGAffineTransform(translationX: 0 - cropOffsetX, y: clipVideoTrack.naturalSize.width - cropOffsetY ); // not fixed width is the real height in upside down
-      t2 = t1.rotated(by: -CGFloat.pi / 2 );
+      t2 = t1.rotated(by: -(CGFloat)(M_PI_2) );
       break;
     default:
       NSLog("no supported orientation has been found in this video");
@@ -153,7 +149,7 @@ class RNVideoTrimmer: NSObject {
     }
 
     let finalTransform: CGAffineTransform = t2
-    transformer.setTransform(finalTransform, at: .zero)
+    transformer.setTransform(finalTransform, at: CMTime.zero)
 
     instruction.layerInstructions = [transformer]
     videoComposition.instructions = [instruction]
@@ -229,14 +225,14 @@ class RNVideoTrimmer: NSObject {
               return
       }
       exportSession.outputURL = NSURL.fileURL(withPath: outputURL.path)
-      exportSession.outputFileType = .mp4
+    exportSession.outputFileType = AVFileType.mp4
       exportSession.shouldOptimizeForNetworkUse = true
 
       if saveToCameraRoll && saveWithCurrentDate {
         let metaItem = AVMutableMetadataItem()
-        metaItem.key = AVMetadataKey.commonKeyCreationDate as (NSCopying & NSObjectProtocol)
-        metaItem.keySpace = .common
-        metaItem.value = NSDate()
+        metaItem.key = AVMetadataKey.commonKeyCreationDate as (NSCopying & NSObjectProtocol)?
+        metaItem.keySpace = AVMetadataKeySpace.common
+        metaItem.value = NSDate() as (NSCopying & NSObjectProtocol)?
         exportSession.metadata = [metaItem]
       }
 
@@ -279,20 +275,9 @@ class RNVideoTrimmer: NSObject {
     let firstAsset = AVAsset(url: sourceURL as URL)
 
     let mixComposition = AVMutableComposition()
-    let track = mixComposition.addMutableTrack(withMediaType: .video, preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
+    let track = mixComposition.addMutableTrack(withMediaType: AVMediaType.video, preferredTrackID: Int32(kCMPersistentTrackID_Invalid))
 
-    //fix issue where boomerang effect on main camera video is rotated 90 degrees
-    var transforms: CGAffineTransform?
-    transforms = track?.preferredTransform
-    transforms = CGAffineTransform(rotationAngle: 0)
-    //detect camera type
-    if(options.object(forKey: "cameraType") as? String == "back"){
-      transforms = transforms?.concatenating(CGAffineTransform(rotationAngle: CGFloat(90.0 * .pi / 180)))
-      transforms = transforms?.concatenating(CGAffineTransform(translationX: 640, y: 0))
-      track?.preferredTransform = transforms!
-    }
-    //end of fix
-    
+
     var outputURL = documentDirectory.appendingPathComponent("output")
     var finalURL = documentDirectory.appendingPathComponent("output")
     do {
@@ -321,14 +306,14 @@ class RNVideoTrimmer: NSObject {
 
       // Credit: https://www.raywenderlich.com/94404/play-record-merge-videos-ios-swift
       do {
-        try track?.insertTimeRange(CMTimeRangeMake(start: .zero, duration: firstAsset.duration), of: firstAsset.tracks(withMediaType: .video)[0], at: .zero)
+        try track?.insertTimeRange(CMTimeRangeMake(start: CMTime.zero, duration: firstAsset.duration), of: firstAsset.tracks(withMediaType: AVMediaType.video)[0], at: CMTime.zero)
       } catch _ {
         callback( ["Failed: Could not load 1st track", NSNull()] )
         return
       }
 
       do {
-        try track?.insertTimeRange(CMTimeRangeMake(start: .zero, duration: secondAsset.duration), of: secondAsset.tracks(withMediaType: .video)[0], at: mixComposition.duration)
+        try track?.insertTimeRange(CMTimeRangeMake(start: CMTime.zero, duration: secondAsset.duration), of: secondAsset.tracks(withMediaType: AVMediaType.video)[0], at: mixComposition.duration)
       } catch _ {
         callback( ["Failed: Could not load 2nd track", NSNull()] )
         return
@@ -340,7 +325,7 @@ class RNVideoTrimmer: NSObject {
         return
       }
       exportSession.outputURL = NSURL.fileURL(withPath: finalURL.path)
-      exportSession.outputFileType = .mp4
+      exportSession.outputFileType = AVFileType.mp4
       exportSession.shouldOptimizeForNetworkUse = true
       let startTime = CMTime(seconds: Double(0), preferredTimescale: 1000)
       let endTime = CMTime(seconds: mixComposition.duration.seconds, preferredTimescale: 1000)
@@ -421,7 +406,7 @@ class RNVideoTrimmer: NSObject {
       let sourceURL = getSourceURL(source: source)
       let asset = AVAsset(url: sourceURL as URL)
 
-      guard let videoTrack = asset.tracks(withMediaType: .video).first else  {
+    guard let videoTrack = asset.tracks(withMediaType: AVMediaType.video).first else  {
           callback(["Error getting track info", NSNull()])
           return
       }
@@ -458,14 +443,14 @@ class RNVideoTrimmer: NSObject {
           callback(["Error creating AVAssetExportSession", NSNull()])
           return
       }
-      compressionEncoder!.outputFileType = AVFileType.mp4.rawValue
+    compressionEncoder!.outputFileType = AVFileType.mp4.rawValue
       compressionEncoder!.outputURL = NSURL.fileURL(withPath: outputURL.path)
       compressionEncoder!.shouldOptimizeForNetworkUse = true
       if saveToCameraRoll && saveWithCurrentDate {
         let metaItem = AVMutableMetadataItem()
-        metaItem.key = AVMetadataKey.commonKeyCreationDate as (NSCopying & NSObjectProtocol)
-        metaItem.keySpace = .common
-        metaItem.value = NSDate()
+        metaItem.key = AVMetadataKey.commonKeyCreationDate as (NSCopying & NSObjectProtocol)?
+        metaItem.keySpace = AVMetadataKeySpace.common
+        metaItem.value = NSDate() as (NSCopying & NSObjectProtocol)?
         compressionEncoder!.metadata = [metaItem]
       }
       compressionEncoder?.videoSettings = [
@@ -509,7 +494,7 @@ class RNVideoTrimmer: NSObject {
     var assetInfo: [String: Any] = [
       "duration" : asset.duration.seconds
     ]
-    if let track = asset.tracks(withMediaType: .video).first {
+    if let track = asset.tracks(withMediaType: AVMediaType.video).first {
       let naturalSize = track.naturalSize
       let t = track.preferredTransform
       let isPortrait = t.a == 0 && abs(t.b) == 1 && t.d == 0
@@ -557,7 +542,7 @@ class RNVideoTrimmer: NSObject {
           callback( ["Unable to convert to base64)", NSNull()]  )
         }
       } else if ( format == "JPEG" ) {
-        let imgData = image.jpegData(compressionQuality: 1)
+        let imgData = image.jpegData(compressionQuality: 1.0)
 
         let fileName = ProcessInfo.processInfo.globallyUniqueString
         let fullPath = "\(NSTemporaryDirectory())\(fileName).jpg"
@@ -576,63 +561,6 @@ class RNVideoTrimmer: NSObject {
       callback( ["Failed to convert base64: \(error.localizedDescription)", NSNull()] )
     }
   }
-
-
-  @objc func getTrimmerPreviewImages(_ source: String, startTime: Float = 0, endTime: Float, step: Int = 1, maximumSize: NSDictionary, format: String = "base64", callback: @escaping RCTResponseSenderBlock) {
-    let sourceURL = getSourceURL(source: source)
-    let asset = AVAsset(url: sourceURL)
-
-    var width: CGFloat = 1080
-    if let _width = maximumSize.object(forKey: "width") as? CGFloat {
-      width = _width
-    }
-    var height: CGFloat = 1080
-    if let _height = maximumSize.object(forKey: "height") as? CGFloat {
-      height = _height
-    }
-
-    let imageGenerator = AVAssetImageGenerator(asset: asset)
-    imageGenerator.maximumSize = CGSize(width: width, height: height)
-    imageGenerator.appliesPreferredTrackTransform = true
-
-    do {
-      var returnData:  Array<Any> = [];
-
-      for second in stride(from: Int(startTime), to: Int(endTime), by: step) {
-        let timestamp = CMTime(seconds: Double(second), preferredTimescale: 600)
-        let imageRef = try imageGenerator.copyCGImage(at: timestamp, actualTime: nil)
-        let image = UIImage(cgImage: imageRef)
-        // if ( format == "base64" ) {
-        let imgData = image.pngData()
-        let base64string = imgData?.base64EncodedString(options: Data.Base64EncodingOptions.init(rawValue: 0))
-        if base64string != nil {
-          returnData.append(base64string)
-        } else {
-          callback( ["Unable to convert to base64)", NSNull()]  )
-        }
-        // } else if ( format == "JPEG" ) {
-        //   let imgData = image.jpegData(compressionQuality: 1)
-
-        //   let fileName = ProcessInfo.processInfo.globallyUniqueString
-        //   let fullPath = "\(NSTemporaryDirectory())\(fileName).jpg"
-
-        //   try imgData?.write(to: URL(fileURLWithPath: fullPath), options: .atomic)
-
-        //   let imageWidth = imageRef.width
-        //   let imageHeight = imageRef.height
-        //   let imageFormattedData: [AnyHashable: Any] = ["uri": fullPath, "width": imageWidth, "height": imageHeight]
-
-        //   returnData.append(imageFormattedData)
-        // } else {
-          //  callback( ["Failed format. Expected one of 'base64' or 'JPEG'", NSNull()] )
-        // }
-      }
-      callback( [NSNull(), returnData] )
-    } catch {
-      callback( ["Failed to convert base64: \(error.localizedDescription)", NSNull()] )
-    }
-  }
-
 
   func randomString() -> String {
     let letters: NSString = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
